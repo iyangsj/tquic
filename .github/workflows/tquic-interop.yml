@@ -21,7 +21,39 @@ jobs:
         include:
           - server: tquic
             client: lsquic
+          - server: tquic
+            client: ngtcp2 
+          - server: tquic
+            client: quiche
+          - server: tquic
+            client: picoquic
+          - server: tquic
+            client: msquic
+          - server: tquic
+            client: quinn
+          - server: tquic
+            client: s2n-quic
+          - server: tquic
+            client: xquic
+          - server: tquic
+            client: quic-go
           - server: lsquic
+            client: tquic
+          - server: ngtcp2 
+            client: tquic
+          - server: quiche
+            client: tquic
+          - server: picoquic
+            client: tquic
+          - server: msquic
+            client: tquic
+          - server: quinn
+            client: tquic
+          - server: s2n-quic
+            client: tquic
+          - server: xquic
+            client: tquic
+          - server: quic-go
             client: tquic
 
     steps:

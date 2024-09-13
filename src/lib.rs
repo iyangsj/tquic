@@ -855,7 +855,7 @@ impl Default for RecoveryConfig {
             copa_steady_delta: congestion_control::COPA_DELTA,
             copa_use_standing_rtt: true,
             initial_rtt: INITIAL_RTT,
-            enable_pacing: true,
+            enable_pacing: false,
             pacing_granularity: time::Duration::from_millis(1),
             pto_linear_factor: DEFAULT_PTO_LINEAR_FACTOR,
             max_pto: MAX_PTO,

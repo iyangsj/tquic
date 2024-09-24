@@ -518,16 +518,19 @@ impl Connection {
         }
 
         // Decrypt packet header
-        let key = self.tls_session.get_keys(hdr.pkt_type.to_level()?);
-        let key = match &key.open {
-            Some(open) => open,
-            None => {
-                let pkt = buf[..read + length].to_vec();
-                self.try_buffer_undecryptable_packets(&hdr, pkt, info);
-                return Ok(read + length);
-            }
-        };
-        packet::decrypt_header(buf, pkt_num_offset, &mut hdr, key).map_err(|_| Error::Done)?;
+        let is_encryption_disabled = self.is_encryption_disabled(hdr.pkt_type);
+        if !is_encryption_disabled {
+            let key = self.tls_session.get_keys(hdr.pkt_type.to_level()?);
+            let key = match &key.open {
+                Some(open) => open,
+                None => {
+                    let pkt = buf[..read + length].to_vec();
+                    self.try_buffer_undecryptable_packets(&hdr, pkt, info);
+                    return Ok(read + length);
+                }
+            };
+            packet::decrypt_header(buf, pkt_num_offset, &mut hdr, key).map_err(|_| Error::Done)?;
+        }
 
         // Decode packet sequence number
         let handshake_confirmed = self.is_confirmed();
@@ -564,9 +567,12 @@ impl Connection {
             &hdr,
             space,
         )?;
-        let mut payload =
+        let mut payload = if !is_encryption_disabled {
             packet::decrypt_payload(buf, payload_offset, payload_len, cid_seq, pkt_num, key)
-                .map_err(|_| Error::Done)?;
+                .map_err(|_| Error::Done)?
+        } else {
+            bytes::Bytes::copy_from_slice(&buf[payload_offset..payload_offset + payload_len])
+        };
         if payload.is_empty() {
             // An endpoint MUST treat receipt of a packet containing no frames as a connection error
             // of type PROTOCOL_VIOLATION.
@@ -1187,6 +1193,13 @@ impl Connection {
             self.events.add(Event::ResetTokenAdvertised(reset_token));
         }
 
+        // The connection enters disable_1rtt_encryption mode
+        if self.peer_transport_params.disable_encryption
+            && self.local_transport_params.disable_encryption
+        {
+            self.flags.insert(DisableEncryption);
+        }
+
         self.set_peer_trans_params(peer_params)?;
         self.flags.insert(AppliedPeerTransportParams);
 
@@ -1729,16 +1742,20 @@ impl Connection {
             cid_seq = Some(dcid_seq as u32);
         }
 
-        let written = packet::encrypt_packet(
-            out,
-            cid_seq,
-            pkt_num,
-            pkt_num_len,
-            payload_len,
-            payload_offset,
-            None,
-            key,
-        )?;
+        let written = if !self.is_encryption_disabled(hdr.pkt_type) {
+            packet::encrypt_packet(
+                out,
+                cid_seq,
+                pkt_num,
+                pkt_num_len,
+                payload_len,
+                payload_offset,
+                None,
+                key,
+            )?
+        } else {
+            payload_offset + payload_len
+        };
 
         let sent_pkt = space::SentPacket {
             pkt_type,
@@ -3299,6 +3316,11 @@ impl Connection {
         Some(idle_timeout)
     }
 
+    /// Whether encryption on the specified packet type should be disabled
+    fn is_encryption_disabled(&self, pkt_type: PacketType) -> bool {
+        pkt_type == PacketType::OneRTT && self.flags.contains(DisableEncryption)
+    }
+
     /// Check whether the connection is a server connection.
     pub fn is_server(&self) -> bool {
         self.is_server
@@ -4366,6 +4388,9 @@ enum ConnectionFlags {
 
     /// The multipath extension is successfully negotiated.
     EnableMultipath = 1 << 20,
+
+    /// The disable_1rtt_encryption is successfully negotiated.
+    DisableEncryption = 1 << 21,
 }
 
 /// Statistics about a QUIC connection.

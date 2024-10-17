@@ -103,7 +103,15 @@ impl FlowControl {
     /// Return true if the available window is smaller than the half
     /// of the current window.
     pub fn should_send_max_data(&self) -> bool {
-        (self.max_data - self.read_off) * 2 < self.window
+        let v = (self.max_data - self.read_off) * 2 < self.window;
+        log::debug!(
+            "~~~ should_send_max_data {}: max_data {} - read_off {} < window {} / 2",
+            v,
+            self.max_data,
+            self.read_off,
+            self.window
+        );
+        v
     }
 
     /// Get the next max_data limit which will be sent to the peer

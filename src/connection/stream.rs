@@ -379,9 +379,21 @@ impl StreamMap {
         let empty_fin = buf_len == 0 && fin;
 
         if written < buf_len {
+            log::debug!(
+                "~~~ stream {} not all data has been written buf_len {}, written{}",
+                stream_id,
+                buf_len,
+                written
+            );
             let max_data = stream.send.max_data();
 
             if stream.send.blocked_at() != Some(max_data) {
+                log::debug!(
+                    "~~~ stream {} sendbuf blocked_at() {:?} != max_data() {:?}, mark stream blocked",
+                    stream_id,
+                    stream.send.blocked_at(),
+                    Some(max_data)
+                );
                 stream.send.update_blocked_at(Some(max_data));
                 self.mark_blocked(stream_id, true, max_data);
             }
@@ -525,6 +537,12 @@ impl StreamMap {
         // The connection-level flow control credit is not enough, mark the connection
         // blocked and schedule a DATA_BLOCKED frame to be sent to the peer.
         if self.max_tx_data_left() < len as u64 {
+            trace!(
+                "{} stream {} was blocked by connection-level flow control at {}",
+                self.trace_id,
+                stream_id,
+                self.send_capacity.max_data
+            );
             self.update_data_blocked_at(Some(self.send_capacity.max_data));
         }
 
@@ -544,6 +562,10 @@ impl StreamMap {
         if stream.send.capacity()? < len {
             let max_data = stream.send.max_data();
             if stream.send.blocked_at() != Some(max_data) {
+                debug!(
+                    "~~~ stream {} was blocked by stream-level flow control at {}",
+                    stream_id, max_data
+                );
                 stream.send.update_blocked_at(Some(max_data));
                 self.mark_blocked(stream_id, true, max_data);
             }

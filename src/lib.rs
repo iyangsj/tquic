@@ -374,6 +374,7 @@ impl Config {
     pub fn new() -> Result<Self> {
         let local_transport_params = TransportParams {
             initial_max_data: 10485760,
+            //initial_max_stream_data_bidi_local: 10485760,
             initial_max_stream_data_bidi_local: 5242880,
             initial_max_stream_data_bidi_remote: 2097152,
             initial_max_stream_data_uni: 1048576,

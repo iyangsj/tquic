@@ -163,6 +163,7 @@ impl Recovery {
     ) {
         let in_flight = pkt.in_flight;
         let ack_eliciting = pkt.ack_eliciting;
+        let pacing = pkt.pacing;
         let sent_size = pkt.sent_size;
 
         pkt.time_sent = now;
@@ -214,7 +215,9 @@ impl Recovery {
         }
 
         // Update pacing tokens number.
-        self.pacer.on_sent(sent_size as u64);
+        if pacing {
+            self.pacer.on_sent(sent_size as u64);
+        }
     }
 
     /// Handle packet acknowledgment event.
@@ -830,8 +833,23 @@ impl Recovery {
 
     /// Check whether this path can still send packets.
     pub(crate) fn can_send(&mut self) -> bool {
-        self.bytes_in_flight < self.congestion.congestion_window() as usize
-            && (!self.pacer.enabled() || self.can_pacing())
+        if self.bytes_in_flight >= self.congestion.congestion_window() as usize {
+            debug!(
+                "{} sending is limited by congestion controller, inflight {}, window {}",
+                self.trace_id,
+                self.bytes_in_flight,
+                self.congestion.congestion_window()
+            );
+            return false;
+        }
+        if self.pacer.enabled() && !self.can_pacing() {
+            debug!(
+                "{} sending is limited by pacer, pacing timer {:?}",
+                self.trace_id, self.pacer_timer
+            );
+            return false;
+        }
+        true
     }
 
     fn can_pacing(&mut self) -> bool {
@@ -850,12 +868,7 @@ impl Recovery {
             );
         }
 
-        if self.pacer_timer.is_none() {
-            true
-        } else {
-            trace!("{} pacing timer is {:?}", self.trace_id, self.pacer_timer);
-            false
-        }
+        self.pacer_timer.is_none()
     }
 
     /// Update statistics for the packet sent event
